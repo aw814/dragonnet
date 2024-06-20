@@ -7,15 +7,20 @@ from keras.models import Model
 from keras import regularizers
 
 
+# minimize errors/loss for propensity score prediction (for exposure model)
 def binary_classification_loss(concat_true, concat_pred):
     t_true = concat_true[:, 1]
     t_pred = concat_pred[:, 2]
+    # stabilizing the training process by avoiding issues with logarithmic calculations 
+    # in the next step (binary cross-entropy) 
     t_pred = (t_pred + 0.001) / 1.002
+    # Binary cross-entropy loss is a common choice for binary classification tasks
+    # it measures the "distance" between the actual t and the predicted t
     losst = tf.reduce_sum(K.binary_crossentropy(t_true, t_pred))
 
     return losst
 
-
+# minimize prediction errors separately for treated and untreated groups(for outcome model)
 def regression_loss(concat_true, concat_pred):
     y_true = concat_true[:, 0]
     t_true = concat_true[:, 1]
@@ -39,7 +44,7 @@ def ned_loss(concat_true, concat_pred):
 def dead_loss(concat_true, concat_pred):
     return regression_loss(concat_true, concat_pred)
 
-
+# minimize both the prediction error for outcome + exposure models. 
 def dragonnet_loss_binarycross(concat_true, concat_pred):
     return regression_loss(concat_true, concat_pred) + binary_classification_loss(concat_true, concat_pred)
 
@@ -50,7 +55,10 @@ def treatment_accuracy(concat_true, concat_pred):
     return binary_accuracy(t_true, t_pred)
 
 
-
+# compute the average absolute value of epsilons 
+# across batches of data during training or evaluation
+# monitor or track how large the epsilon values are, 
+# on average, across batches of data during training or evaluation
 def track_epsilon(concat_true, concat_pred):
     epsilons = concat_pred[:, 3]
     return tf.abs(tf.reduce_mean(epsilons))
@@ -64,17 +72,22 @@ class EpsilonLayer(Layer):
     def build(self, input_shape):
         # Create a trainable weight variable for this layer.
         self.epsilon = self.add_weight(name='epsilon',
-                                       shape=[1, 1],
+                                       shape=[1, 1], # scalar
                                        initializer='RandomNormal',
                                        #  initializer='ones',
                                        trainable=True)
         super(EpsilonLayer, self).build(input_shape)  # Be sure to call this at the end
 
+    #  This operation ensures that every sample in a batch has the same value of epsilon,
+    #  but maintains the batch structure necessary for further calculations in a model.
     def call(self, inputs, **kwargs):
         # import ipdb; ipdb.set_trace()
         return self.epsilon * tf.ones_like(inputs)[:, 0:1]
 
-
+#  This loss function combines a typical prediction loss (dragonnet_loss_binarycross)
+#  with a targeted regularization term 
+#  that adjusts predictions based on the influence of 
+#  propensity score H + epsilon (trainable param)
 def make_tarreg_loss(ratio=1., dragonnet_loss=dragonnet_loss_binarycross):
     def tarreg_ATE_unbounded_domain_loss(concat_true, concat_pred):
         vanilla_loss = dragonnet_loss(concat_true, concat_pred)
@@ -92,9 +105,13 @@ def make_tarreg_loss(ratio=1., dragonnet_loss=dragonnet_loss_binarycross):
 
         y_pred = t_true * y1_pred + (1 - t_true) * y0_pred
 
+        # ********* (4) Computing H - the influence of propensity score (treatment probability)
+        #  on the perturbation. ******
         h = t_true / t_pred - (1 - t_true) / (1 - t_pred)
-
+        # ********* Perturbed Outcomes - adjusts the 
+        # raw predictions based on the estimated treatment effect and the learned epsilon. ***********
         y_pert = y_pred + epsilons * h
+
         targeted_regularization = tf.reduce_sum(tf.square(y_true - y_pert))
 
         # final
@@ -120,7 +137,7 @@ def make_dragonnet(input_dim, reg_l2):
     x = Dense(units=200, activation='elu', kernel_initializer='RandomNormal')(x)
     x = Dense(units=200, activation='elu', kernel_initializer='RandomNormal')(x)
 
-
+    # ***** (3) propensity score g layer ****
     t_predictions = Dense(units=1, activation='sigmoid')(x)
 
     # HYPOTHESIS
@@ -137,7 +154,10 @@ def make_dragonnet(input_dim, reg_l2):
     y1_predictions = Dense(units=1, activation=None, kernel_regularizer=regularizers.l2(reg_l2), name='y1_predictions')(
         y1_hidden)
 
+    # ***** (5) epsilon layer - look into the class ****
     dl = EpsilonLayer()
+    # init this layer to make sure each element in the batch of t_predictions 
+    # will multiply the scalar value epsilon (trainable parameter) defult is 1
     epsilons = dl(t_predictions, name='epsilon')
     # logging.info(epsilons)
     concat_pred = Concatenate(1)([y0_predictions, y1_predictions, t_predictions, epsilons])

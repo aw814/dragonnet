@@ -33,10 +33,13 @@ def train_and_predict_dragons(t, y_unscaled, x, targeted_regularization=True, ou
                               knob_loss=dragonnet_loss_binarycross, ratio=1., dragon='', val_split=0.2, batch_size=64):
     verbose = 0
     y_scaler = StandardScaler().fit(y_unscaled)
+    # ********(1) Transform of Y outcome *****************
     y = y_scaler.transform(y_unscaled)
     train_outputs = []
     test_outputs = []
 
+    # ********(2) Model Configuration (G-comp) ******************
+    # Each takes the number of features (x.shape[1]) and a regularization parameter (0.01) as inputs.
     if dragon == 'tarnet':
         dragonnet = make_tarnet(x.shape[1], 0.01)
 
@@ -47,6 +50,7 @@ def train_and_predict_dragons(t, y_unscaled, x, targeted_regularization=True, ou
     metrics = [regression_loss, binary_classification_loss, treatment_accuracy, track_epsilon]
 
     if targeted_regularization:
+    # targeted regularization --- TMLE
         loss = make_tarreg_loss(ratio=ratio, dragonnet_loss=knob_loss)
     else:
         loss = knob_loss
@@ -56,13 +60,15 @@ def train_and_predict_dragons(t, y_unscaled, x, targeted_regularization=True, ou
     i = 0
     tf.random.set_random_seed(i)
     np.random.seed(i)
-    train_index, test_index = train_test_split(np.arange(x.shape[0]), test_size=0, random_state=1)
+    train_index, test_index = train_test_split(np.arange(x.shape[0]), test_size=0.05, random_state=1)
     test_index = train_index
+    print("Train indices:", train_index)
 
     x_train, x_test = x[train_index], x[test_index]
     y_train, y_test = y[train_index], y[test_index]
     t_train, t_test = t[train_index], t[test_index]
 
+    # two column matrix col1 = y,col 2 = t
     yt_train = np.concatenate([y_train, t_train], 1)
 
     import time;
@@ -234,6 +240,8 @@ def run_ihdp(data_base_dir='/Users/claudiashi/data/ihdp_csv', output_dir='~/resu
              knob_loss=dragonnet_loss_binarycross,
              ratio=1., dragon=''):
     print("the dragon is {}".format(dragon))
+    print("\n the data is from", data_base_dir)
+    print("\n the result goes to", output_dir)
 
     simulation_files = sorted(glob.glob("{}/*.csv".format(data_base_dir)))
 
@@ -243,6 +251,8 @@ def run_ihdp(data_base_dir='/Users/claudiashi/data/ihdp_csv', output_dir='~/resu
 
         os.makedirs(simulation_output_dir, exist_ok=True)
 
+        # x (covariates), t (treatment), y (factual outcome), y_cf (counterfactual outcome),
+        # mu_0, mu_1 (noiseless potential outcomes)
         x = load_and_format_covariates_ihdp(simulation_file)
         t, y, y_cf, mu_0, mu_1 = load_all_other_crap(simulation_file)
         np.savez_compressed(os.path.join(simulation_output_dir, "simulation_outputs.npz"),
