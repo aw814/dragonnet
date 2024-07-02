@@ -49,10 +49,13 @@ def psi_tmle_cont_outcome(q_t0, q_t1, g, t, y, eps_hat=None, truncate_level=0.05
         eps_hat = np.sum(h*(y-full_q)) / np.sum(np.square(h))
 
     def q1(t_cf):
+        # ***** Estimate H ******
         h_cf = t_cf * (1.0 / g) - (1.0 - t_cf) / (1.0 - g)
         full_q = (1.0 - t_cf) * q_t0 + t_cf * q_t1  # predictions from unperturbed model
+        # ***** Update predictions with H, eps ******
         return full_q + eps_hat * h_cf
 
+    # ***** average Treatment effect *****
     ite = q1(np.ones_like(t)) - q1(np.zeros_like(t))
     psi_tmle = np.mean(ite)
 

@@ -44,7 +44,7 @@ def ned_loss(concat_true, concat_pred):
 def dead_loss(concat_true, concat_pred):
     return regression_loss(concat_true, concat_pred)
 
-# minimize both the prediction error for outcome + exposure models. 
+# minimize both the prediction error for outcome + exposure models. as formula 2.2 in the paper
 def dragonnet_loss_binarycross(concat_true, concat_pred):
     return regression_loss(concat_true, concat_pred) + binary_classification_loss(concat_true, concat_pred)
 
@@ -111,7 +111,7 @@ def make_tarreg_loss(ratio=1., dragonnet_loss=dragonnet_loss_binarycross):
         # ********* Perturbed Outcomes - adjusts the 
         # raw predictions based on the estimated treatment effect and the learned epsilon. ***********
         y_pert = y_pred + epsilons * h
-
+        # tf.square(y_true - y_pert) is the regularization term
         targeted_regularization = tf.reduce_sum(tf.square(y_true - y_pert))
 
         # final

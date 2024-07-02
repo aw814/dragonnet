@@ -26,6 +26,12 @@ def _split_output(yt_hat, t, y, y_scaler, x, index):
                                                                         g[t.squeeze() == 0.].mean())
     print(var)
 
+    # q_t0,q_t1 -> predicted outcomes under (0,1) treatment
+    # g -> predicted propensity score
+    # t -> treatment
+    # y -> original y before transformation
+    # index
+    # eps -> epsilon
     return {'q_t0': q_t0, 'q_t1': q_t1, 'g': g, 't': t, 'y': y, 'x': x, 'index': index, 'eps': eps}
 
 
@@ -50,7 +56,7 @@ def train_and_predict_dragons(t, y_unscaled, x, targeted_regularization=True, ou
     metrics = [regression_loss, binary_classification_loss, treatment_accuracy, track_epsilon]
 
     if targeted_regularization:
-    # targeted regularization --- TMLE
+    # targeted regularization
         loss = make_tarreg_loss(ratio=ratio, dragonnet_loss=knob_loss)
     else:
         loss = knob_loss
